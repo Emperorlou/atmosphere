@@ -29,6 +29,9 @@ import java.util.logging.Logger;
  */
 abstract public class ServerTransportProtocol implements ServerTransport {
 
+	int sentMessageCounter = 0;
+	
+	
     abstract void send(String message, AsyncCallback<Void> callback);
 
     abstract String serialize(Object message) throws SerializationException;
@@ -58,9 +61,11 @@ abstract public class ServerTransportProtocol implements ServerTransport {
     public void broadcast(Object message) {
         if (message instanceof String) {
             send(pack(MessageType.STRING, ActionType.BROADCAST, message.toString()), defaultCallback);
+            
         } else {
             try {
                 send(pack(MessageType.OBJECT, ActionType.BROADCAST, serialize(message)), defaultCallback);
+                
             } catch (SerializationException ex) {
                 logger.log(Level.SEVERE, "Failed to serialize message", ex);
             }
@@ -83,6 +88,7 @@ abstract public class ServerTransportProtocol implements ServerTransport {
         }
         if (packet.length() > 0) {
             send(packet.toString(), defaultCallback);
+            
         }
     }
 
@@ -90,9 +96,11 @@ abstract public class ServerTransportProtocol implements ServerTransport {
     public void post(Object message, AsyncCallback<Void> callback) {
         if (message instanceof String) {
             send(pack(MessageType.STRING, ActionType.POST, message.toString()), callback);
+            
         } else {
             try {
                 send(pack(MessageType.OBJECT, ActionType.POST, serialize(message)), callback);
+                
             } catch (SerializationException ex) {
                 logger.log(Level.SEVERE, "Failed to serialize message", ex);
             }
@@ -115,6 +123,7 @@ abstract public class ServerTransportProtocol implements ServerTransport {
         }
         if (packet.length() > 0) {
             send(packet.toString(), callback);
+            
         }
     }
     
@@ -139,9 +148,27 @@ abstract public class ServerTransportProtocol implements ServerTransport {
         }
     }
     protected String pack(MessageType msgType, ActionType actType) {
-        return msgType.type + "\n" + actType.type + "\n";
+        return pack(msgType, actType, "");
     }
+    
+    
+    /**
+     * This method adds a header to the message the end-user wants to send to the server. 
+     * 
+     * WARNING: Only call this method once per message, this method includes a counter
+     * that keeps track of the number of messages sent to the server and this counter increases
+     * by 1 every time this method is called. 
+     * (Its not the best place for the counter but it ensures the counter is never missed, which
+     * would cause the server to silently stop delivering messages)
+     * 
+     * @param msgType
+     * @param actType
+     * @param message
+     * @return
+     */
     protected String pack(MessageType msgType, ActionType actType, String message) {
-        return msgType.type + "\n" + actType.type + "\n" + message.length() + "\n" + message;
+    	String result = msgType.type + "|" + actType.type + "|" + sentMessageCounter + "|" + message.length() + "|" + message;
+        sentMessageCounter++;
+        return result;
     }
 }

@@ -16,30 +16,12 @@
 
 package org.atmosphere.gwt.server;
 
-import com.google.gwt.user.client.rpc.SerializationException;
-import com.google.gwt.user.server.rpc.SerializationPolicy;
-import com.google.gwt.user.server.rpc.SerializationPolicyProvider;
-import com.google.gwt.user.server.rpc.impl.ServerSerializationStreamReader;
-import org.atmosphere.cpr.AtmosphereResource;
-import org.atmosphere.cpr.AtmosphereServletProcessor;
-import org.atmosphere.cpr.Broadcaster;
-import org.atmosphere.cpr.BroadcasterFactory;
-import org.atmosphere.cpr.DefaultBroadcaster;
-import org.atmosphere.gwt.server.impl.GwtAtmosphereResourceImpl;
-import org.atmosphere.gwt.server.impl.RPCUtil;
-import org.atmosphere.handler.AbstractReflectorAtmosphereHandler;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.servlet.ServletConfig;
-import javax.servlet.ServletContext;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -48,9 +30,31 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+
+import javax.servlet.ServletConfig;
+import javax.servlet.ServletContext;
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+import org.atmosphere.cpr.AtmosphereResource;
+import org.atmosphere.cpr.AtmosphereServletProcessor;
+import org.atmosphere.cpr.Broadcaster;
+import org.atmosphere.cpr.BroadcasterFactory;
+import org.atmosphere.cpr.DefaultBroadcaster;
 import org.atmosphere.cpr.FrameworkConfig;
+import org.atmosphere.gwt.server.impl.GwtAtmosphereResourceImpl;
+import org.atmosphere.gwt.server.impl.RPCUtil;
 import org.atmosphere.gwt.shared.Constants;
 import org.atmosphere.gwt.shared.SerialMode;
+import org.atmosphere.handler.AbstractReflectorAtmosphereHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.gwt.user.client.rpc.SerializationException;
+import com.google.gwt.user.server.rpc.SerializationPolicy;
+import com.google.gwt.user.server.rpc.SerializationPolicyProvider;
+import com.google.gwt.user.server.rpc.impl.ServerSerializationStreamReader;
 
 /**
  * @author p.havelaar
@@ -58,7 +62,9 @@ import org.atmosphere.gwt.shared.SerialMode;
 public class AtmosphereGwtHandler extends AbstractReflectorAtmosphereHandler
         implements Executor, AtmosphereServletProcessor {
 
-    public static final int NO_TIMEOUT = -1;
+	HashMap<GwtAtmosphereResource, AtmosphereGwtMessageBuffer> resourceToMessageBufferMap = new HashMap<GwtAtmosphereResource, AtmosphereGwtMessageBuffer>();
+	
+	public static final int NO_TIMEOUT = -1;
     public static final String GWT_BROADCASTER_ID = "GWT_BROADCASTER";
 
     private static final int DEFAULT_HEARTBEAT = 15 * 1000; // 15 seconds by default
@@ -227,72 +233,76 @@ public class AtmosphereGwtHandler extends AbstractReflectorAtmosphereHandler
 
     protected void doServerMessage(HttpServletRequest request, HttpServletResponse response, int connectionID)
         throws IOException{
-        BufferedReader data = request.getReader();
+
         List<Serializable> postMessages = new ArrayList<Serializable>();
         GwtAtmosphereResource resource = lookupResource(connectionID);
         if (resource == null) {
             return;
         }
-        String mode = resource.getRequest().getParameter(Constants.CLIENT_SERIALZE_MODE_PARAMETER);
-        SerialMode serialMode;
-        if (mode != null) {
-            serialMode = SerialMode.valueOf(mode);
-        } else {
-            serialMode = SerialMode.RPC;
+        AtmosphereGwtMessageBuffer buffer = resourceToMessageBufferMap.get(resource);
+        if (buffer==null)
+        {
+        	buffer = new AtmosphereGwtMessageBuffer(resource);
+        	resourceToMessageBufferMap.put(resource, buffer);
         }
+        	
+        buffer.process(request, response);
         
-        try {
-            while (true) {
-                String event = data.readLine();
-                if (event == null) {
-                    break;
+        
+        
+//TODO: This needs to be redone, possibly by sending the mode via the message data head like every other parameter        
+//        String mode = resource.getRequest().getParameter(Constants.CLIENT_SERIALZE_MODE_PARAMETER);
+//        SerialMode serialMode;
+//        if (mode != null) {
+//            serialMode = SerialMode.valueOf(mode);
+//        } else {
+//            serialMode = SerialMode.RPC;
+//        }
+        
+//        while (true) {
+        AtmosphereGwtMessage message = buffer.nextMessage();
+        while(message!=null)
+        {
+        
+            if (logger.isTraceEnabled()) {
+                logger.trace("[" + connectionID + "] Server message received: " + message.getEvent() + ";" + message.getAction());
+            }
+            if (message.getEvent().equals("o")) {
+                char[] dataChars = message.getMessage().toCharArray();
+                if (message.getAction().equals("p")) {
+                	//TODO: Finish this with the new system
+//                    Serializable message = deserialize(dataChars, serialMode);
+//                    if (message != null) {
+//                        postMessages.add(message);
+//                    }
+                } else if (message.getAction().equals("b")) {
+                	
+                	//TODO: Finish this with the new system
+//                    Serializable message = deserialize(dataChars, serialMode);
+//                    broadcast(message, resource);
                 }
-                String action = data.readLine();
+
+            } else if (message.getEvent().equals("s")) {
+            	
                 
-                if (logger.isTraceEnabled()) {
-                    logger.trace("[" + connectionID + "] Server message received: " + event + ";" + action);
+                if (message.getAction().equals("p")) {
+                    postMessages.add(message.getMessage());
+                } else if (message.getAction().equals("b")) {
+                    broadcast(message.getMessage(), resource);
                 }
-                if (event.equals("o")) {
-                    int length = Integer.parseInt(data.readLine());
-                    char[] messageData = new char[length];
-                    if (data.read(messageData, 0, length) != length) {
-                        throw new IllegalStateException("Corrupt message received");
-                    }
-                    if (action.equals("p")) {
-                        Serializable message = deserialize(messageData, serialMode);
-                        if (message != null) {
-                            postMessages.add(message);
-                        }
-                    } else if (action.equals("b")) {
-                        Serializable message = deserialize(messageData, serialMode);
-                        broadcast(message, resource);
-                    }
 
-                } else if (event.equals("s")) {
-                    int length = Integer.parseInt(data.readLine());
-                    char[] messageData = new char[length];
-                    if (data.read(messageData, 0, length) != length) {
-                        throw new IllegalStateException("Corrupt message received");
-                    }
-                    if (action.equals("p")) {
-                        postMessages.add(String.copyValueOf(messageData));
-                    } else if (action.equals("b")) {
-                        broadcast(String.copyValueOf(messageData), resource);
-                    }
-
-                } else if (event.equals("c")) {
-                    if (action.equals("d")) {
-                        disconnect(resource);
-                    }
+            } else if (message.getEvent().equals("c")) {
+                if (message.getAction().equals("d")) {
+                    disconnect(resource);
                 }
             }
-        } catch (IOException ex) {
-            logger.error("[" + connectionID + "] Failed to read", ex);
+            message = buffer.nextMessage();
         }
 
         if (postMessages.size() > 0) {
             post(request, response, postMessages, resource);
         }
+        
     }
 //    protected void writePostResponse(HttpServletRequest request,
 //            HttpServletResponse response, ServletContext context, String responsePayload) throws IOException {
