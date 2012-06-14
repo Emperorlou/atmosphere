@@ -91,12 +91,12 @@ public class GwtAtmosphereResourceImpl implements GwtAtmosphereResource {
 
     @Override
     public void post(Serializable message) {
-        getBroadcaster().broadcast(message, atmResource);
+        broadcast(message);
     }
 
     @Override
     public void post(List<Serializable> messages) {
-        getBroadcaster().broadcast(messages, atmResource);
+        broadcast(messages);
     }
 
     @Override
