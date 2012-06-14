@@ -83,4 +83,10 @@ public interface AtmosphereListener {
      * @param messages
      */
     public void onMessage(List<?> messages);
+    
+    /**
+     * This notifies the browser that the connection is in the process of reconnecting to the server 
+     * after a dropout of some kind.
+     */
+    public void onReconnecting();
 }

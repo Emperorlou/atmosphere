@@ -385,5 +385,14 @@ public class AtmosphereProxy {
             }
         }
 
+
+		@Override
+		public void onReconnecting()
+		{
+			clientListener.onReconnecting();
+			dispatchEvent(event(EventType.ON_RECONNECTING));
+			
+		}
+
     };
 }

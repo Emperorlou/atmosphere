@@ -293,6 +293,11 @@ public class AtmosphereClient {
         }
     }
 
+    private void doOnReconnecting()
+    {
+    	listener.onReconnecting();
+    }
+    
 
     private void doOnBeforeDisconnected(CometClientTransportWrapper transport) {
         if (refreshState == null && transport == primaryTransport) {
@@ -584,6 +589,13 @@ public class AtmosphereClient {
                 }
             };
         }
+
+		@Override
+		public void onReconnecting()
+		{
+			// Do nothing here, we don't need to care about this at the moment
+			doOnReconnecting();
+		}
 
     }
 
