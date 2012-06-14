@@ -39,9 +39,14 @@ import org.atmosphere.socketio.transport.XHRPollingTransport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+
+import static org.atmosphere.socketio.transport.SocketIOSessionManagerImpl.mapper;
 
 /**
  * SocketIO implementation.
@@ -156,39 +161,77 @@ public class SocketIOAtmosphereInterceptor implements AtmosphereInterceptor {
                         public AsyncIOWriter write(AtmosphereResponse r, String data) throws IOException {
                             SocketIOSessionOutbound outbound = (SocketIOSessionOutbound)
                                     request.getAttribute(SocketIOAtmosphereHandler.SOCKETIO_SESSION_OUTBOUND);
+                            SocketIOSessionManagerImpl.SocketIOProtocol p = (SocketIOSessionManagerImpl.SocketIOProtocol)
+                                    r.request().getAttribute(SocketIOSessionManagerImpl.SocketIOProtocol.class.getName());
+
+                            String msg = p == null ? data : mapper.writeValueAsString(p.clearArgs().addArgs(data));
+
                             if (outbound != null) {
-                                outbound.sendMessage(new SocketIOPacketImpl(SocketIOPacketImpl.PacketType.MESSAGE, data));
+                                outbound.sendMessage(new SocketIOPacketImpl(SocketIOPacketImpl.PacketType.EVENT, msg));
                             } else {
-                                r.getResponse().getWriter().write(data);
+                                r.getResponse().getOutputStream().write(msg.getBytes(r.getCharacterEncoding()));
                             }
                             return this;
                         }
 
                         @Override
                         public AsyncIOWriter write(AtmosphereResponse r, byte[] data) throws IOException {
-                            write(new String(data));
+                            SocketIOSessionManagerImpl.SocketIOProtocol p = (SocketIOSessionManagerImpl.SocketIOProtocol)
+                                    r.request().getAttribute(SocketIOSessionManagerImpl.SocketIOProtocol.class.getName());
+                            if (p == null) {
+                                r.getResponse().getOutputStream().write(data);
+                            } else {
+                                write(new String(data, r.request().getCharacterEncoding()));
+                            }
                             return this;
                         }
 
                         @Override
                         public AsyncIOWriter write(AtmosphereResponse r, byte[] data, int offset, int length) throws IOException {
-                            return write(new String(data, offset, length));
+                            SocketIOSessionManagerImpl.SocketIOProtocol p = (SocketIOSessionManagerImpl.SocketIOProtocol)
+                                    r.request().getAttribute(SocketIOSessionManagerImpl.SocketIOProtocol.class.getName());
+                            if (p == null) {
+                                r.getResponse().getOutputStream().write(data, offset, length);
+                            } else {
+                                write(new String(data, offset, length, r.request().getCharacterEncoding()));
+                            }
+                            return this;
                         }
 
                         @Override
                         public AsyncIOWriter flush(AtmosphereResponse r) throws IOException {
+                            try {
+                                r.getResponse().getOutputStream().flush();
+                            } catch (IllegalStateException ex) {
+                                r.getResponse().getWriter().flush();
+                            }
                             return this;
+                        }
+
+                        @Override
+                        public AsyncIOWriter writeError(AtmosphereResponse r, int errorCode, String message) throws IOException {
+                            ((HttpServletResponse) r.getResponse()).sendError(errorCode, message);
+                            return this;
+                        }
+
+                        @Override
+                        public void close(AtmosphereResponse r) throws IOException {
+                            try {
+                                r.getResponse().getOutputStream().close();
+                            } catch (IllegalStateException ex) {
+                                r.getResponse().getWriter().close();
+                            }
                         }
                     });
                 }
-                return transport.handle((AtmosphereResourceImpl) r, atmosphereHandler, getSessionManager(version));
+                transport.handle((AtmosphereResourceImpl) r, atmosphereHandler, getSessionManager(version));
             } else {
                 logger.error("Protocol not supported : " + protocol);
             }
         } catch (Exception e) {
             logger.error("", e);
         }
-        return Action.CANCELLED;
+        return Action.CONTINUE;
     }
 
     @Override

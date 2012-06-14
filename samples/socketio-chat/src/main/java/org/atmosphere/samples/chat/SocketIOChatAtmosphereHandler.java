@@ -21,6 +21,7 @@ import org.atmosphere.cpr.AtmosphereRequest;
 import org.atmosphere.cpr.AtmosphereResource;
 import org.atmosphere.cpr.AtmosphereResourceEvent;
 import org.atmosphere.cpr.AtmosphereResponse;
+import org.atmosphere.interceptor.AtmosphereResourceLifecycleInterceptor;
 
 import java.io.IOException;
 import java.util.Date;
@@ -30,18 +31,12 @@ import java.util.Date;
  *
  * @author Sebastien Dionne : sebastien.dionne@gmail.com
  */
-@AtmosphereHandlerService(path = "/chat")
+@AtmosphereHandlerService(path = "/chat", interceptors= {AtmosphereResourceLifecycleInterceptor.class})
 public class SocketIOChatAtmosphereHandler implements AtmosphereHandler {
 
     @Override
     public void onRequest(AtmosphereResource r) throws IOException {
-
-        AtmosphereRequest req = r.getRequest();
-        if (req.getMethod().equalsIgnoreCase("GET")) {
-            r.suspend();
-        } else if (req.getMethod().equalsIgnoreCase("POST")) {
-            r.getBroadcaster().broadcast(req.getReader().readLine());
-        }
+        r.getBroadcaster().broadcast(r.getRequest().getReader().readLine());
     }
 
     @Override
@@ -58,18 +53,6 @@ public class SocketIOChatAtmosphereHandler implements AtmosphereHandler {
             String message = body.substring(body.lastIndexOf(":") + 2, body.length() - 2);
 
             res.getWriter().write(new Data(author, message).toString());
-            switch (r.transport()) {
-                case JSONP:
-                case AJAX:
-                case LONG_POLLING:
-                    event.getResource().resume();
-                    break;
-                default:
-                    res.getWriter().flush();
-                    break;
-            }
-        } else if (!event.isResuming()){
-            event.broadcaster().broadcast(new Data("Someone", "say bye bye!").toString());
         }
     }
 

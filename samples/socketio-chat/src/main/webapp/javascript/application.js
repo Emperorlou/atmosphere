@@ -21,18 +21,7 @@ $(function () {
         });
     });
 
-    socket.on('message', function(msg) {
-        message(msg);
-    });
-
-    socket.on('reconnect', function () {
-        console.log('System', 'Reconnected to the server');
-    });
-
-    socket.on('disconnect', function () {
-        content.html($('<p>', { text: 'Sorry, but there\'s some problem with your '
-            + 'socket or the server is down' }));
-    });
+    socket.on('chat message', message);
 
     socket.on('error', function (e) {
         content.html($('<p>', { text: 'Sorry, but there\'s some problem with your '
@@ -48,7 +37,7 @@ $(function () {
                 author = msg;
             }
 
-            socket.emit('', $.stringifyJSON({ author: author, message: msg }));
+            socket.emit('chat message', $.stringifyJSON({ author: author, message: msg }));
             $(this).val('');
 
             input.attr('disabled', 'disabled');

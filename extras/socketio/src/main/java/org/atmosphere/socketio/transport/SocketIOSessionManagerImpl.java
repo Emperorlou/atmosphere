@@ -18,9 +18,9 @@ package org.atmosphere.socketio.transport;
 import org.atmosphere.cpr.AtmosphereHandler;
 import org.atmosphere.cpr.AtmosphereRequest;
 import org.atmosphere.cpr.AtmosphereResourceEventImpl;
+import org.atmosphere.cpr.AtmosphereResourceFactory;
 import org.atmosphere.cpr.AtmosphereResourceImpl;
 import org.atmosphere.socketio.HeartBeatSessionMonitor;
-import org.atmosphere.socketio.cpr.SocketIOAtmosphereHandler;
 import org.atmosphere.socketio.SocketIOException;
 import org.atmosphere.socketio.SocketIOSession;
 import org.atmosphere.socketio.SocketIOSessionFactory;
@@ -28,13 +28,13 @@ import org.atmosphere.socketio.SocketIOSessionManager;
 import org.atmosphere.socketio.SocketIOSessionOutbound;
 import org.atmosphere.socketio.TimeoutSessionMonitor;
 import org.atmosphere.socketio.cpr.SocketIOAtmosphereHandler;
-import org.atmosphere.socketio.cpr.SocketIOAtmosphereInterceptor;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.security.SecureRandom;
 import java.util.Collection;
+import java.util.LinkedList;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -58,7 +58,7 @@ public class SocketIOSessionManagerImpl implements SocketIOSessionManager, Socke
     private long heartbeatInterval = 15;
     private long timeout = 2500;
     private long requestSuspendTime = 20000; // 20 sec.
-    private static final ObjectMapper mapper = new ObjectMapper();
+    public static final ObjectMapper mapper = new ObjectMapper();
 
     private static String generateRandomString(int length) {
 
@@ -323,8 +323,15 @@ public class SocketIOSessionManagerImpl implements SocketIOSessionManager, Socke
                 socketIOSessions.remove(sessionId);
             } else if (this.handler == null) {
                 this.handler = handler;
+
                 try {
                     state = ConnectionState.CONNECTED;
+
+                    if (atmosphereHandler == null) {
+                        // Something went wrong
+                        logger.debug("Invalid state");
+                        return;
+                    }
 
                     // for the Broadcaster
                     resource.getRequest().setAttribute(SocketIOAtmosphereHandler.SOCKETIO_SESSION_ID, sessionId);
@@ -335,6 +342,7 @@ public class SocketIOSessionManagerImpl implements SocketIOSessionManager, Socke
                         if (SocketIOAtmosphereHandler.class.isAssignableFrom(atmosphereHandler.getClass())) {
                             SocketIOAtmosphereHandler.class.cast(atmosphereHandler).onConnect(resource, handler);
                         } else {
+                            resource.disableSuspend(true);
                             atmosphereHandler.onRequest(resource);
                         }
                     }
@@ -362,7 +370,9 @@ public class SocketIOSessionManagerImpl implements SocketIOSessionManager, Socke
 
                             for (String msg : p.getArgs()) {
                                 AtmosphereRequest r = resource.getRequest();
+                                r.setAttribute(SocketIOProtocol.class.getName(), p);
                                 r.body(msg).method("POST");
+                                resource.disableSuspend(true);
                                 atmosphereHandler.onRequest(resource);
                             }
                         }
@@ -480,6 +490,19 @@ public class SocketIOSessionManagerImpl implements SocketIOSessionManager, Socke
 
         public void setName(String name) {
             this.name = name;
+        }
+
+        public SocketIOProtocol addArgs(String s) {
+            if (args == null) {
+                args = new LinkedList<String>();
+            }
+            args.add(s);
+            return this;
+        }
+
+        public SocketIOProtocol clearArgs(){
+            args.clear();
+            return this;
         }
 
         @Override

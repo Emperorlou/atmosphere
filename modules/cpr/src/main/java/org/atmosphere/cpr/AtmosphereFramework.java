@@ -168,6 +168,7 @@ public class AtmosphereFramework implements ServletContextProvider {
         public final AtmosphereHandler atmosphereHandler;
         public Broadcaster broadcaster;
         public String mapping;
+        public List<AtmosphereInterceptor> interceptors = Collections.<AtmosphereInterceptor>emptyList();
 
         public AtmosphereHandlerWrapper(AtmosphereHandler atmosphereHandler, String mapping) {
             this.atmosphereHandler = atmosphereHandler;
@@ -248,15 +249,33 @@ public class AtmosphereFramework implements ServletContextProvider {
      *
      * @param mapping The servlet mapping (servlet path)
      * @param h       implementation of an {@link AtmosphereHandler}
+     * @param l       An attay of {@link AtmosphereInterceptor}
      */
-    public AtmosphereFramework addAtmosphereHandler(String mapping, AtmosphereHandler h) {
+    public AtmosphereFramework addAtmosphereHandler(String mapping, AtmosphereHandler h, List<AtmosphereInterceptor> l) {
         if (!mapping.startsWith("/")) {
             mapping = "/" + mapping;
         }
 
         AtmosphereHandlerWrapper w = new AtmosphereHandlerWrapper(h, mapping);
+        w.interceptors = l;
         addMapping(mapping, w);
+
         logger.info("Installed AtmosphereHandler {} mapped to context-path: {}", h.getClass().getName(), mapping);
+        if (l.size() > 0) {
+            logger.info("Installed AtmosphereInterceptor {} mapped to AtmosphereHandler {}", l, h.getClass().getName());
+        }
+        return this;
+    }
+
+    /**
+     * Add an {@link AtmosphereHandler} serviced by the {@link Servlet}
+     * This API is exposed to allow embedding an Atmosphere application.
+     *
+     * @param mapping The servlet mapping (servlet path)
+     * @param h       implementation of an {@link AtmosphereHandler}
+     */
+    public AtmosphereFramework addAtmosphereHandler(String mapping, AtmosphereHandler h) {
+        addAtmosphereHandler(mapping, h, Collections.<AtmosphereInterceptor>emptyList());
         return this;
     }
 
@@ -281,16 +300,59 @@ public class AtmosphereFramework implements ServletContextProvider {
      * @param mapping       The servlet mapping (servlet path)
      * @param h             implementation of an {@link AtmosphereHandler}
      * @param broadcasterId The {@link Broadcaster#getID} value.
+     * @param l             An attay of {@link AtmosphereInterceptor}
      */
-    public AtmosphereFramework addAtmosphereHandler(String mapping, AtmosphereHandler h, String broadcasterId) {
+    public AtmosphereFramework addAtmosphereHandler(String mapping, AtmosphereHandler h, String broadcasterId, List<AtmosphereInterceptor> l) {
         if (!mapping.startsWith("/")) {
             mapping = "/" + mapping;
         }
 
         AtmosphereHandlerWrapper w = new AtmosphereHandlerWrapper(h, mapping);
         w.broadcaster.setID(broadcasterId);
+        w.interceptors = l;
         addMapping(mapping, w);
         logger.info("Installed AtmosphereHandler {} mapped to context-path: {}", h.getClass().getName(), mapping);
+        if (l.size() > 0) {
+            logger.info("Installed AtmosphereInterceptor {} mapped to AtmosphereHandler {}", l, h.getClass().getName());
+        }
+        return this;
+    }
+
+    /**
+     * Add an {@link AtmosphereHandler} serviced by the {@link Servlet}
+     * This API is exposed to allow embedding an Atmosphere application.
+     *
+     * @param mapping       The servlet mapping (servlet path)
+     * @param h             implementation of an {@link AtmosphereHandler}
+     * @param broadcasterId The {@link Broadcaster#getID} value.
+     */
+    public AtmosphereFramework addAtmosphereHandler(String mapping, AtmosphereHandler h, String broadcasterId) {
+        addAtmosphereHandler(mapping, h, broadcasterId, Collections.<AtmosphereInterceptor>emptyList());
+        return this;
+    }
+
+    /**
+     * Add an {@link AtmosphereHandler} serviced by the {@link Servlet}
+     * This API is exposed to allow embedding an Atmosphere application.
+     *
+     * @param mapping     The servlet mapping (servlet path)
+     * @param h           implementation of an {@link AtmosphereHandler}
+     * @param broadcaster The {@link Broadcaster} associated with AtmosphereHandler.
+     * @param l           An attay of {@link AtmosphereInterceptor}
+     */
+    public AtmosphereFramework addAtmosphereHandler(String mapping, AtmosphereHandler h, Broadcaster broadcaster, List<AtmosphereInterceptor> l) {
+        if (!mapping.startsWith("/")) {
+            mapping = "/" + mapping;
+        }
+
+        AtmosphereHandlerWrapper w = new AtmosphereHandlerWrapper(h, broadcaster);
+        w.interceptors = l;
+
+        addMapping(mapping, w);
+        logger.info("Installed AtmosphereHandler {} mapped to context-path: {}", h.getClass().getName(), mapping);
+        if (l.size() > 0) {
+            logger.info("Installed AtmosphereInterceptor {} mapped to AtmosphereHandler {}", l, h.getClass().getName());
+        }
         return this;
     }
 
@@ -303,13 +365,7 @@ public class AtmosphereFramework implements ServletContextProvider {
      * @param broadcaster The {@link Broadcaster} associated with AtmosphereHandler.
      */
     public AtmosphereFramework addAtmosphereHandler(String mapping, AtmosphereHandler h, Broadcaster broadcaster) {
-        if (!mapping.startsWith("/")) {
-            mapping = "/" + mapping;
-        }
-
-        AtmosphereHandlerWrapper w = new AtmosphereHandlerWrapper(h, broadcaster);
-        addMapping(mapping, w);
-        logger.info("Installed AtmosphereHandler {} mapped to context-path: {}", h.getClass().getName(), mapping);
+        addAtmosphereHandler(mapping, h, broadcaster, Collections.<AtmosphereInterceptor>emptyList());
         return this;
     }
 
@@ -402,9 +458,9 @@ public class AtmosphereFramework implements ServletContextProvider {
                 }
 
                 public String getInitParameter(String name) {
-                    String param = sc.getInitParameter(name);
+                    String param = initParams.get(name);
                     if (param == null) {
-                        return initParams.get(name);
+                        return sc.getInitParameter(name);
                     }
                     return param;
                 }
@@ -414,7 +470,7 @@ public class AtmosphereFramework implements ServletContextProvider {
                     while (en.hasMoreElements()) {
                         String name = (String) en.nextElement();
                         if (!initParams.containsKey(name)) {
-                            initParams.put(name, name);
+                            initParams.put(name, sc.getInitParameter(name));
                         }
                     }
                     return Collections.enumeration(initParams.keySet());
@@ -487,10 +543,13 @@ public class AtmosphereFramework implements ServletContextProvider {
             }
         }
 
-        // ADD JSONP support
-        interceptors.addFirst(new JSONPAtmosphereInterceptor());
-        // Add SSE support
-        interceptors.addFirst(new SSEAtmosphereInterceptor());
+        s = sc.getInitParameter(ApplicationConfig.DISABLE_ATMOSPHEREINTERCEPTOR);
+        if (s == null) {
+            // ADD JSONP support
+            interceptors.addFirst(new JSONPAtmosphereInterceptor());
+            // Add SSE support
+            interceptors.addFirst(new SSEAtmosphereInterceptor());
+        }
         logger.info("Installed AtmosphereInterceptor {}", interceptors);
     }
 
@@ -740,7 +799,7 @@ public class AtmosphereFramework implements ServletContextProvider {
      * @param sc the {@link ServletConfig}
      * @throws javax.servlet.ServletException
      */
-    void initAtmosphereHandler(ServletConfig sc) throws ServletException {
+    public void initAtmosphereHandler(ServletConfig sc) throws ServletException {
         AtmosphereHandler a;
         AtmosphereHandlerWrapper w;
         for (Entry<String, AtmosphereHandlerWrapper> h : atmosphereHandlers.entrySet()) {
@@ -891,8 +950,24 @@ public class AtmosphereFramework implements ServletContextProvider {
                     broadcasterFilters.addAll(atmoHandler.getBroadcastFilterClasses());
                 }
 
+                List<AtmosphereInterceptor> l = new ArrayList<AtmosphereInterceptor>();
+                if (atmoHandler.getAtmosphereInterceptorClasses() != null) {
+                    for (String a : atmoHandler.getAtmosphereInterceptorClasses()) {
+                        try {
+                            AtmosphereInterceptor ai = (AtmosphereInterceptor) c.loadClass(a).newInstance();
+                            ai.configure(config);
+                            l.add(ai);
+                        } catch (Throwable e) {
+                            logger.warn("", e);
+                        }
+                    }
+                }
+                wrapper.interceptors = l;
+                if (l.size() > 0) {
+                    logger.info("Installed AtmosphereInterceptor {} mapped to AtmosphereHandler {}", l, atmoHandler.getClassName());
+                }
             } catch (Throwable t) {
-                logger.warn("unable to load AtmosphereHandler class: " + atmoHandler.getClassName(), t);
+                logger.warn("Unable to load AtmosphereHandler class: " + atmoHandler.getClassName(), t);
                 throw new ServletException(t);
             }
 
@@ -1345,13 +1420,13 @@ public class AtmosphereFramework implements ServletContextProvider {
     public AtmosphereFramework interceptor(AtmosphereInterceptor c) {
         boolean found = false;
         for (AtmosphereInterceptor interceptor : interceptors) {
-            if(interceptor.getClass().equals(c.getClass())){
+            if (interceptor.getClass().equals(c.getClass())) {
                 found = true;
                 break;
             }
         }
-        
-        if(!found){
+
+        if (!found) {
             interceptors.addLast(c);
         }
         return this;

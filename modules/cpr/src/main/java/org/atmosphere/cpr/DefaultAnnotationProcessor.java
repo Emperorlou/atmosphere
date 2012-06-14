@@ -34,6 +34,8 @@ import javax.servlet.Servlet;
 import java.io.File;
 import java.io.IOException;
 import java.lang.annotation.Annotation;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * An {@link AnnotationProcessor} based on <a href="https://github.com/rmuller/infomas-asl"></a>
@@ -84,8 +86,11 @@ public class DefaultAnnotationProcessor implements AnnotationProcessor {
                         AtmosphereHandler handler = (AtmosphereHandler) cl.loadClass(className).newInstance();
                         AtmosphereHandlerService a = handler.getClass().getAnnotation(AtmosphereHandlerService.class);
 
-                        framework.addAtmosphereHandler(a.path(), handler);
-                        framework.setDefaultBroadcasterClassName(a.broadcasterClassName());
+                        framework.setDefaultBroadcasterClassName(a.broadcaster().getName());
+                        Class<? extends BroadcastFilter>[] bf = a.broadcastFilters();
+                        for (Class<? extends BroadcastFilter> b : bf) {
+                            framework.broadcasterFilters().add(b.getName());
+                        }
 
                         for (String s : a.properties()) {
                             String[] nv = s.split("=");
@@ -98,16 +103,18 @@ public class DefaultAnnotationProcessor implements AnnotationProcessor {
                             framework.addInitParameter(nv[0], nv[1]);
                         }
 
-                        String[] interceptors = a.interceptors();
-                        for (String i : interceptors) {
+                        Class<?>[] interceptors = a.interceptors();
+                        List<AtmosphereInterceptor> l = new ArrayList<AtmosphereInterceptor>();
+                        for (Class i : interceptors) {
                             try {
-                                AtmosphereInterceptor ai = (AtmosphereInterceptor) cl.loadClass(i).newInstance();
+                                AtmosphereInterceptor ai = (AtmosphereInterceptor) i.newInstance();
                                 ai.configure(framework.getAtmosphereConfig());
-                                framework.interceptor(ai);
+                                l.add(ai);
                             } catch (Throwable e) {
                                 logger.warn("", e);
                             }
                         }
+                        framework.addAtmosphereHandler(a.path(), handler, l);
                     } catch (Throwable e) {
                         logger.warn("", e);
                     }
@@ -122,24 +129,28 @@ public class DefaultAnnotationProcessor implements AnnotationProcessor {
                         MeteorService m = s.getAnnotation(MeteorService.class);
 
                         String mapping = m.path();
-                        framework.addAtmosphereHandler(mapping, r);
-                        framework.setDefaultBroadcasterClassName(m.broadcasterClassName());
-
+                        framework.setDefaultBroadcasterClassName(m.broadcaster().getName());
+                        Class<? extends BroadcastFilter>[] bf = m.broadcastFilters();
+                        for (Class<? extends BroadcastFilter> b : bf) {
+                            framework.broadcasterFilters().add(b.getName());
+                        }
                         for (String i : m.atmosphereConfig()) {
                             String[] nv = i.split("=");
                             framework.addInitParameter(nv[0], nv[1]);
                         }
 
-                        String[] interceptors = m.interceptors();
-                        for (String i : interceptors) {
+                        Class<?>[] interceptors = m.interceptors();
+                        List<AtmosphereInterceptor> l = new ArrayList<AtmosphereInterceptor>();
+                        for (Class i : interceptors) {
                             try {
-                                AtmosphereInterceptor ai = (AtmosphereInterceptor) cl.loadClass(i).newInstance();
+                                AtmosphereInterceptor ai = (AtmosphereInterceptor) i.newInstance();
                                 ai.configure(framework.getAtmosphereConfig());
-                                framework.interceptor(ai);
+                                l.add(ai);
                             } catch (Throwable e) {
                                 logger.warn("", e);
                             }
                         }
+                        framework.addAtmosphereHandler(mapping, r, l);
                     } catch (Throwable e) {
                         logger.warn("", e);
                     }
