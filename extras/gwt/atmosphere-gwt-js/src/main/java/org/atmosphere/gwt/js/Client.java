@@ -126,6 +126,13 @@ public class Client implements Exportable {
                 }
             }
         }
+
+		@Override
+		public void onReconnecting()
+		{
+			// Do nothing for now
+			
+		}
     };
 
     @Export
