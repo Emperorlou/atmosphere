@@ -185,6 +185,13 @@ public class GWTDemo implements EntryPoint {
             logger.log(Level.INFO, "comet.message : " + result.toString().replace("<br/>", "\n"));
             Info.display("Received " + messages.size() + " messages", result.toString());
         }
+
+		@Override
+		public void onReconnecting()
+		{
+			// TODO Auto-generated method stub
+			
+		}
     }
 
 }
